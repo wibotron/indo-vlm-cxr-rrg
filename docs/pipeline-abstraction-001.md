@@ -1,0 +1,72 @@
+## Pipeline Abstraction
+- Task: Radiology Report Generation (RRG)
+- Input: CXR Image (single view)
+- Output:
+  - Findings Text
+  - Impression Text
+  - Generation Strategy:
+    - Option-A:
+      - Method: Unified Autoregressive
+      - Definition: Findings and Impression texts are generated as a single sequential text produced by a single decoder, concatenated into a unified sequence separated by domain-specific special tokens.
+    - Option-B:
+      - Method: Dual Separated Generator (Dual Forward Pass / Dual Decoder Head)
+      - Definition: Findings and Impression texts are generated independently or sequentially via two separate decoder heads/passes, decoupling the visual-to-text generation for each report section.
+    - Hypothesis: The unified autoregressive paradigm (Option-A) is architecturally simpler and more effective at maintaining clinical context consistency between Findings and Impression.
+- Dataset:
+  - For Model and Architecture Development:
+    - Official train set of CheXpert Plus
+  - For Model Evaluation:
+    - Official test set of CheXpert Plus
+    - Official test set of MIMIC-CXR (for cross-dataset generalization)
+- Model Architecture Components:
+  - Image Auxiliary CXR Pathologies Classifier:
+    - Pathology: ['No Finding', 'Support Devices', 'Lung Opacity', 'Pleural Effusion', 'Atelectasis', 'Edema', 'Cardiomegaly', 'Consolidation', 'Pneumonia', 'Enlarged Cardiomediastinum', 'Pneumothorax', 'Lung Lesion', 'Fracture', 'Pleural Other']
+    - Each pathology: 1.0 (Positive), 0.0 (Negative), -1.0 (Uncertain), NaN
+    - Model: BioViL-T (same backbone as image encoder) + Classification Head (fully-connected + sigmoid, 14 outputs) + fine-tuned with weighted BCE loss with labels from df_train
+  - Image Encoder:
+    - BioViL-T
+  - Text Decoder:
+    - SLM: BioGPT (fine-tuned with PEFT LoRA)
+  - Alignment/Fusion Module:
+    - RaDialog Style: BERT-based, Q-Former/BLIP-2 style — learnable query embeddings (i.e. 32 queries) which interact with visual features map through cross-attention that this module has to produce soft visual tokens that will be aligned to language space of BioGPT
+- Full Pipeline Workflow:
+  - Training:
+    - Input: Dataset (CXR image + report pairs)
+    - Stage-A (Alignment module training):
+      - CXR image -> Image Encoder -> visual features in form of spatial grid map (embeddings) -> Alignment Module (BERT-based, Q-Former/BLIP-2 style), this type of alignment module has some learnable query embeddings which are learnt during training to interact with visual features through attention layers contained in its alignment module body -> n soft visual tokens -> these tokens are understandable in a language space of text-decoder-only
+    - Stage-B (Image auxiliary classifier):
+      - CXR image -> pre-trained image CheXpert classifier -> spatial grid map features -> global average pooling -> one vector which represents the visual features -> fully connected layer -> 14 outputs (one per CheXpert pathology) -> each output is forwarded to sigmoid activation (multilabel task) -> 14 probabilities for each pathology -> predicted pathology structural findings
+    - Stage-MEETING:
+      - Text-decoder-only is fine tuned with combined prompt: [soft visual tokens] + [predicted findings] + [task instruction]
+      - Output target: findings text and impression text
+  - Inference:
+    - Input: CXR image
+    - Stage-A: Input -> BioViL-T + alignment module -> soft visual tokens
+    - Stage-B: Input -> image auxiliary classifier -> predicted pathology findings
+    - Stage-MEETING: Prompt construction: soft visual tokens + findings + task instruction -> BioGPT (fine-tuned)
+    - Output: findings text + impression text
+  - Loss Function Used:
+    - Alignment/Fusion Module: Contrastive loss + Image-Text matching loss + language modeling loss (optional, if following RaDialog style strictly)
+    - Image Auxiliary Classifier: Weighted binary cross entropy
+    - BioGPT Fine-Tuning: Language modeling loss (autoregressive next token prediction)
+    - Note: If resources are limited, the alignment module can be simplified into just a contrastive loss (similar to the GitHub repository https://github.com/anandr07/Medical-Report-Generator-from-Chest-X-Ray-Images/tree/main) instead of the three combined losses—this is a trade-off decision between training complexity and the potential for better alignment quality. It needs to be noted as an explicit design decision in the methodology, as this is the point that distinguishes your approach from both the original RaDialog and the GitHub repository.
+  - Evaluation Metrics:
+    - Natural Language Generation (NLG):
+      - BLEU-n (n = 1, 2, 3, and 4)
+      - ROUGE-L
+      - METEOR
+      - BERTScore
+    - Clinical Efficacy (CE - CheXbert based):
+      - Macro and micro
+      - Recall, precision, F1, and balanced accuracy
+    - Advanced Clinical Metrics:
+      - SembScore, RadGraph, RaTEscore, GREEN, and CRIMSON
+  - Qualitative:
+    - Qualitative examples generated report vs ground truth (can be saved into csv)
+- References:
+  - https://arxiv.org/pdf/2311.18681v2
+- Helpful Tools to Use:
+  - https://github.com/stanfordmlgroup/CheXbert
+  - https://huggingface.co/StanfordAIMI/RRG_scorers/tree/main
+  - from health_multimodal.image import get_image_inference for BioViL-T
+  - from health_multimodal.image.utils import ImageModelType for BioViL-T

@@ -1,0 +1,45 @@
+## Summary of Literature Review on RaDialog
+- Task: Radiology Report Generation (RRG) and Visual Question Answering (VQA)
+- Dataset:
+  - MIMIC-CXR
+  - MIMIC-NLE
+  - Synthesized Instruct Dataset
+- Input:
+  - Chest X-ray (CXR) image (single-view)
+- Output:
+  - Based on user request: Radiology report (RRG) or an answer to user question (VQA)
+- Model Architecture Components:
+  - Image Encoder:
+    - BioViL-T
+  - Image Classifier:
+    - BioViL-T backbone (a hybrid ResNet-50 and Transformer)
+  - Text Decoder:
+    - LLM: Vicuna-7B
+  - Fusion/Alignment Module:
+    - BERT-based, Q-Former / BLIP-2 style
+- Full Pipeline Workflow:
+  - Training:
+    - Stage-A (Alignment module training):
+      - Data needed: CXR image and report text pairs
+      - CXR image -> Image Encoder -> visual features (spatial grid map features) -> Alignment Module -> soft visual tokens
+    - Stage-B (CheXpert image classifier):
+      - Data needed: CXR images + 14 pathology labels extracted using CheXbert as ground truth
+      - CXR image -> Pre-trained CheXpert image classifier on multilabel classification task -> Image classifier model predicting 14 pathology labels based on image input
+    - Stage-MEETING (Text decoder fine-tuning):
+      - Fine-tuning Vicuna-7B on radiology image-report pairs using PEFT-LoRA (freezing Vicuna-7B parameters to avoid catastrophic forgetting and injecting low-rank adapter matrices)
+      - Enables the decoder to process image embeddings from the alignment module and structured predicted labels, adapting knowledge and style to the radiology domain
+      - Prompt composition: [Soft visual tokens] + [Predicted labels of the image input] + [Task instruction]
+  - Inference:
+    - Input: CXR image + Instruction
+    - Stage-A: CXR image -> Image Encoder -> Alignment Module -> soft visual tokens
+    - Stage-B: CXR image -> CheXpert image classifier -> predicted pathologies as an additional predictor signal
+    - Stage-MEETING: Prompt construction: [Soft visual tokens] + [Predicted pathologies] + [User instruction] -> Fine-tuned Text Decoder -> Output based on prompt
+- Loss Function:
+  - Stage-A:
+    - Contrastive Loss
+    - Language Modeling Loss
+    - Image-Text Matching Loss
+  - Stage-B:
+    - Weighted Cross Entropy Loss
+  - Stage-MEETING:
+    - Language Modeling Loss
