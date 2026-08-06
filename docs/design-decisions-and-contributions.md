@@ -21,7 +21,8 @@
 - Architectural Trade-Off Study for Constrained Hardware:
   - Documenting practical design choices and loss function simplifications (e.g., contrastive-only alignment) to serve as a reference for deploying medical VLMs under limited hardware conditions.
 - CheXpert Plus Pre-processing Methodology Decision:
-  - (maybe).
+  - under consideration.
+
 ## Future Works
 - Localization and Multilingual Fine-Tuning:
   - Translating and adapting CXR report datasets into Bahasa Indonesia to fine-tune localized SLMs, supporting clinical workflow automation in Indonesian healthcare institutions.
