@@ -7,7 +7,7 @@
   - Generation Strategy:
     - Option-A:
       - Method: Unified Autoregressive
-      - Definition: Findings and Impression texts are generated as a single sequential text produced by a single decoder, concatenated into a unified sequence separated by domain-specific special tokens.
+      - Definition: Findings and Impression texts are generated as a single sequential text produced by a single decoder, concatenated into a unified sequence separated by plain-text section markers ("findings: ..." / "impression: ..."), not domain-specific special tokens.
     - Option-B:
       - Method: Dual Separated Generator (Dual Forward Pass / Dual Decoder Head)
       - Definition: Findings and Impression texts are generated independently or sequentially via two separate decoder heads/passes, decoupling the visual-to-text generation for each report section.
@@ -25,6 +25,7 @@
     - Model: BioViL-T (same backbone as image encoder) + Classification Head (fully-connected + sigmoid, 14 outputs) + fine-tuned with weighted BCE loss with labels from df_train
   - Image Encoder:
     - BioViL-T
+    - Two distinct checkpoints are maintained, not one shared instance: (1) a frozen pretrained BioViL-T used in Stage-A (alignment module training/inference), and (2) a separately fine-tuned BioViL-T used in Stage-B (auxiliary classifier). Do not reuse Stage-B's fine-tuned weights in Stage-A — this matches RaDialog's design, where the classifier's backbone is specialized independently of the frozen encoder feeding the alignment module.
   - Text Decoder:
     - SLM: BioGPT (fine-tuned with PEFT LoRA)
   - Alignment/Fusion Module:
@@ -35,7 +36,7 @@
     - Stage-A (Alignment module training):
       - CXR image -> Image Encoder -> visual features in form of spatial grid map (embeddings) -> Alignment Module (BERT-based, Q-Former/BLIP-2 style), this type of alignment module has some learnable query embeddings which are learnt during training to interact with visual features through attention layers contained in its alignment module body -> n soft visual tokens -> these tokens are understandable in a language space of text-decoder-only
     - Stage-B (Image auxiliary classifier):
-      - CXR image -> pre-trained image CheXpert classifier -> spatial grid map features -> global average pooling -> one vector which represents the visual features -> fully connected layer -> 14 outputs (one per CheXpert pathology) -> each output is forwarded to sigmoid activation (multilabel task) -> 14 probabilities for each pathology -> predicted pathology structural findings
+      - CXR image -> BioViL-T (fine-tuned) + classification head -> spatial grid map features -> global average pooling -> one vector which represents the visual features -> fully connected layer -> 14 outputs (one per CheXpert pathology) -> each output is forwarded to sigmoid activation (multilabel task) -> 14 probabilities for each pathology -> predicted pathology structural findings
     - Stage-MEETING:
       - Text-decoder-only is fine tuned with combined prompt: [soft visual tokens] + [predicted findings] + [task instruction]
       - Output target: findings text and impression text
