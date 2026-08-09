@@ -103,6 +103,21 @@ Pathology labels for the image-based auxiliary classifier are built by combining
 
 Priority routing is findings-first (falls back to impression only when findings is unavailable) — reversed from an earlier impression-first design. This is based on CheXpert Plus's own labeler validation (Chambon et al., 2024, Table 4): on a human-annotated, image-based ground truth set (n=154), findings-derived CheXbert labels achieved higher agreement (F1=0.44) than impression-derived labels (F1=0.34). Since the auxiliary classifier predicts pathology from the image, the more image-grounded label source is prioritized. This is treated as directional evidence (small n, no reported confidence interval), not a statistically confirmed effect size.
 
+Revise (09/08/2026):
+- Steps on build pathology labels:
+  - input: `df_train` and `df_test` with `pathology-label_x` from findings text and `pathology-label_y` from impression text.
+  - output: 14 well-prepared multilabel pathology (values = 0.0, 1.0).
+  - 13 pathologies excluding `No Finding` are combined.
+  - for each pathologies, on `pathology-label_x` and `pathology-label_y`:
+    - if -1.0 then convert to 1.0.
+    - fallback is decided PER PATHOLOGY, based on whether `pathology-label_x` itself is NaN or not — NOT based on `cleaned_findings_text`/`has_findings`, since these two are produced by different processes at different points in the pipeline (`pathology-label_x` comes from Stanford's official labeler run on the RAW `section_findings`, while `cleaned_findings_text` is the result of our own cleaning pipeline applied afterward). A row can have `cleaned_findings_text` empty while `pathology-label_x` still holds real (non-NaN) values, or vice versa — they are not guaranteed to agree.
+    - if both `pathology-label_x` and `pathology-label_y` are NaN then convert to 0.0.
+  - `No Finding` = 1.0 $\leftrightarrow$ another 13 pathologies = 0.0.
+  - `No Finding` = 0.0 if at least there is one of 13 pathologies = 1.0.
+- Priority Algorithm:
+  - for each pathology independently: if `pathology-label_x` is not NaN, prioritize it; otherwise fallback to `pathology-label_y`; if both are NaN, fallback to 0.0.
+  - this fallback happens per-pathology-column, not per-row — `cleaned_findings_text`/`has_findings` play no role in this decision.
+
 ## Sequence Length Budget
 
 Word-level length statistics for target_report_text are computed from the train split only (never dev/test, to avoid leaking evaluation-set characteristics into a training-time design decision). The 95th/99th percentiles are reported as a starting max_length recommendation, to be converted to a token-level budget once the actual decoder tokenizer is loaded (word count and subword token count are not 1:1).

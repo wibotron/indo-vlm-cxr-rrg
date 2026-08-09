@@ -1,6 +1,6 @@
 ## Pipeline Abstraction
 - Task: Radiology Report Generation (RRG)
-- Input: CXR Image (single view)
+- Input: CXR Image (single view) 224 $\times$ 224
 - Output:
   - Findings Text
   - Impression Text
@@ -38,19 +38,19 @@
     - Stage-B (Image auxiliary classifier):
       - CXR image -> BioViL-T (fine-tuned) + classification head -> spatial grid map features -> global average pooling -> one vector which represents the visual features -> fully connected layer -> 14 outputs (one per CheXpert pathology) -> each output is forwarded to sigmoid activation (multilabel task) -> 14 probabilities for each pathology -> predicted pathology structural findings
     - Stage-MEETING:
-      - Text-decoder-only is fine tuned with combined prompt: [soft visual tokens] + [predicted findings] + [task instruction]
+      - Text-decoder-only is fine tuned with combined prompt: [task instruction] + [view either frontal or lateral] + [CheXpert labels predicted from auxiliary classifier] + [soft visual tokens].
       - Output target: findings text and impression text
   - Inference:
     - Input: CXR image
     - Stage-A: Input -> BioViL-T + alignment module -> soft visual tokens
     - Stage-B: Input -> image auxiliary classifier -> predicted pathology findings
-    - Stage-MEETING: Prompt construction: soft visual tokens + findings + task instruction -> BioGPT (fine-tuned)
+    - Stage-MEETING: Prompt construction:  [task instruction] + [view either frontal or lateral] + [CheXpert labels predicted from auxiliary classifier] + [soft visual tokens] -> BioGPT (fine-tuned)
     - Output: findings text + impression text
   - Loss Function Used:
     - Alignment/Fusion Module: Contrastive loss + Image-Text matching loss + language modeling loss (optional, if following RaDialog style strictly)
     - Image Auxiliary Classifier: Weighted binary cross entropy
     - BioGPT Fine-Tuning: Language modeling loss (autoregressive next token prediction)
-    - Note: If resources are limited, the alignment module can be simplified into just a contrastive loss (similar to the GitHub repository https://github.com/anandr07/Medical-Report-Generator-from-Chest-X-Ray-Images/tree/main) instead of the three combined losses—this is a trade-off decision between training complexity and the potential for better alignment quality. It needs to be noted as an explicit design decision in the methodology, as this is the point that distinguishes your approach from both the original RaDialog and the GitHub repository.
+    - Note: If resources are limited, the alignment module may need to be simplified into just a contrastive loss (similar to the GitHub repository https://github.com/anandr07/Medical-Report-Generator-from-Chest-X-Ray-Images/tree/main) instead of the three combined losses—this is a trade-off decision between training complexity and the potential for better alignment quality.
   - Evaluation Metrics:
     - Natural Language Generation (NLG):
       - BLEU-n (n = 1, 2, 3, and 4)
@@ -71,3 +71,26 @@
   - https://huggingface.co/StanfordAIMI/RRG_scorers/tree/main
   - from health_multimodal.image import get_image_inference for BioViL-T
   - from health_multimodal.image.utils import ImageModelType for BioViL-T
+
+## Lower Level Detail
+- stage-A and stage-B are frozen during stage-MEETING in order to avoid catastrophic forgetting and circular dependency. BioGPT via LoRA adapter is the only one trainable during stage-MEETING.
+- Weighted BCE for stage-B:
+  - weights are calculated based on inverse frequency from positive labels on df_train_internal only.
+- loss functions involve on stage-A:
+  - 
+  - 
+- how CheXpert predicted findings labels are formatted for prompt injection:
+  - CXR image -> Classifier from Stage B (frozen) -> 14 logits number -> 14 numbers between 0.0 - 1.0.
+  - Thresholding.
+  - Contradiction/Ambiguity/Conflict Handling on "No Finding".
+  - Combine into a String.
+  - Inject to a prompt.
+- resolve `No Finding` conflict with other pathologies for prompt injection format:
+  - 
+- prompt order:
+  - [task instruction] + [view either frontal or lateral] + [CheXpert labels predicted from auxiliary classifier] + [soft visual tokens].
+- LoRA configuration:
+  - r = 8
+  - alpha = 16
+  - dropout = 0.05
+  - target = ['q_proj', 'v_proj']
