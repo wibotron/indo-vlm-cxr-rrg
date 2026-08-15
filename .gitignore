@@ -2,3 +2,4 @@ data/
 external/
 past/
 docs/prompt-context.md
+references/**/*.ipynb
