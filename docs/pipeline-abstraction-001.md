@@ -40,7 +40,7 @@
       - threshold tuning is performed on `dev_internal` set to maximize macro-averaged F1 score.
       - the threshold will be used for prompt injection in stage-MEETING. 
     - Stage-MEETING:
-      - Text-decoder-only is fine tuned with combined prompt: [task instruction] + [view either frontal or lateral] + [CheXpert labels predicted from auxiliary classifier] + [soft visual tokens].
+      - Text-decoder-only is fine tuned with combined prompt: [soft visual tokens] + [CheXpert labels predicted from auxiliary classifier] + [task instruction].
       - Output target: findings text and impression text
   - Inference:
     - Input: CXR image
@@ -104,7 +104,7 @@
   - documented deviation from strict RaDialog fidelity: RaDialog's Q-Former uses joint self-attention (queries + text tokens together) interleaved with cross-attention to the image. This project's `AlignmentModule` uses `nn.TransformerDecoder` (cross-attention only, queries never self-attend with text tokens) — lighter-weight and easier to read, at the cost of not benefiting from a BERT-initialized Q-Former's pretrained weights.
 - how CheXpert predicted findings labels are formatted for prompt injection:
   - CXR image -> Stage-B classifier (frozen) -> 14 logits -> sigmoid -> 14 probabilities between 0.0 - 1.0.
-  - - Thresholding (see "threshold tuning strategy" below for how the value is selected).
+  - Thresholding (see "threshold tuning strategy" below for how the value is selected).
   - Contradiction/Ambiguity/Conflict Handling on "No Finding" (see resolution below).
   - Combine into a single string.
   - Inject into the prompt.
@@ -115,18 +115,19 @@
   - Step-by-step algorithm:
     1. Inspect the 13 other pathologies (excluding `No Finding`).
     2. Collect all pathologies with probability $\geq$ `threshold`.
-    3. If one or more pathologies cross the threshold:
+    3. If one or more pathologies cross its pathology threshold:
        $\rightarrow$ Suppress "No Finding" implicitly (do not include it in the prompt).
-       $\rightarrow$ Collect all active other pathologies with probability $\geq$ `threshold`.
+       $\rightarrow$ Collect all active other pathologies with probability $\geq$ `its threshold`.
        $\rightarrow$ Format them as a comma-separated string.
        $\rightarrow$ prompt output: `"chexpert findings: {list_of_all_active_pathologies}"`.
     4. If no other pathology crosses the threshold:
        $\rightarrow$ prompt output: `"chexpert findings: no significant findings"`.
   - note:
-    - `threshold` is treated as a tunable hyperparameter and will be validated on dev_internal.
+    - `per-pathology threshold` is treated as a tunable hyperparameter and will be validated on dev_internal.
     - This approach preserves maximum recall for all confidently detected findings, while the strict threshold prevents low-confidence noise from polluting the prompt.
 - prompt order:
-  - [task instruction] + [view either frontal or lateral] + [CheXpert labels predicted from auxiliary classifier] + [soft visual tokens].
+- 
+  - [soft visual tokens] + [CheXpert labels predicted from auxiliary classifier] + [task instruction].
 - threshold tuning strategy for prompt injection:
   - performed exclusively on the `dev_internal` set — the official `test` split remains untouched until final evaluation.
   - Step 1 — probability extraction:
@@ -134,15 +135,15 @@
     - store the resulting 14-dimensional probability vectors and the corresponding ground-truth labels.
     - this is a single forward pass; no backpropagation or re-training is involved.
   - Step 2 — grid search over thresholds:
-    - define a search space for `threshold` (e.g., values from 0.1 to 0.9, step 0.05).
+    - define a search space for `threshold` (e.g., values from 0.1 to 0.91, step 0.05).
     - for each candidate threshold, apply the prompt-injection logic:
-      - if at least one of the 13 non-`No Finding` pathologies has probability ≥ `threshold`:
+      - if at least one of the 13 non-`No Finding` pathologies has probability ≥ `its threshold`:
         → treat them as detected and include them in the prompt.
       - otherwise:
         → treat the study as normal and output `"chexpert findings: no significant findings"`.
     - compute the macro-averaged F1 score over the 13 non-`No Finding` pathologies (excluding `No Finding` itself, since it is a logical derivative rather than an independent prediction target).
   - Step 3 — select the final threshold:
-    - pick the threshold that yields the highest macro-averaged F1 score on `dev_internal`.
+    - pick the per-pathology thresholds that yields the highest macro-averaged F1 score on `dev_internal`.
   - Rationale:
     - macro-averaged F1 is chosen instead of micro-averaged F1 to ensure that rare pathologies (e.g., Fracture, Pleural Other) contribute equally to the selection process, preventing the threshold from being dominated by majority classes such as Cardiomegaly or No Finding.
     - restricting tuning to `dev_internal` prevents over-optimization to the test distribution, preserving the validity of the final evaluation.
@@ -153,5 +154,9 @@
   - dropout = 0.05
   - target = ['q_proj', 'v_proj']
 
-## Future Work
-- Full-fidelity Stage-A alignment module (`Blip2QFormerModel`, BERT-initialized, joint self-attention between queries and text, + LM loss) — conditional trigger: pursue only if exp_001's Stage-A retrieval accuracy (Recall@1/@5 on dev_internal) plateaus early or shows a clear ceiling that appears to bottleneck downstream RRG quality in stage-MEETING.
+## Future Work (`exp_002`)
+- Full-fidelity Stage-A alignment module (`Blip2QFormerModel`, BERT-initialized, joint self-attention between queries and text, + optional on LM loss) — conditional trigger: pursue only if exp_001's Stage-A retrieval accuracy (Recall@1/@5 on dev_internal) plateaus early or shows a clear ceiling that appears to bottleneck downstream RRG quality in stage-MEETING.
+
+## Note
+- Auxiliary Classification pipeline used for every experiments is on `notebooks/exp_002/stage_b.ipynb`.
+- `notebooks/exp_002/stage_a.ipynb` is not used anymore.
