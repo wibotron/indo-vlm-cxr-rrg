@@ -33,6 +33,10 @@
 - Untuk exp_002:
   - `notebooks/exp_002/stage_meeting.ipynb`
 
+### Catatan
+- Setiap satu notebook sudah selesai di-run, maka laporkan terlebih dahulu hasilnya.
+- Jangan langsung run next notebook setelah satu notebook selesai.
+
 ## Dependensi Eksternal
 
 - Sebelum menjalankan evaluasi di Stage-MEETING, pastikan dependensi berikut tersedia.
