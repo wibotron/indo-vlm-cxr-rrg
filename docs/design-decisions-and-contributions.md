@@ -12,12 +12,12 @@
   - Exclusively focusing on single-view frontal CXR images as a deliberate design boundary, establishing a lightweight baseline without requiring multi-view or longitudinal inputs.
 
 ## What to Contribute
-- Empirical Benchmark of SLMs in Radiology Report Generation:
+- SLMs usage in Radiology Report Generation:
   - Providing a systematic analysis comparing lightweight SLMs (BioGPT, Qwen-2.5) against larger 7B LLMs within a multi-stage VLM framework, quantifying trade-offs in GPU memory, training throughput, and generation quality.
 - Cross-Dataset Generalization Insights:
   - Evaluating how well an SLM-based VLM trained on CheXpert Plus generalizes to unseen clinical distributions in MIMIC-CXR, measured via clinical efficacy (CheXbert F1) and advanced semantic metrics (RadGraph, GREEN, RaTEscore).
 - Architectural Trade-Off Study for Constrained Hardware:
-  - Documenting practical design choices and loss function simplifications (e.g., contrastive-only alignment) to serve as a reference for deploying medical VLMs under limited hardware conditions.
+  - Documenting practical design choices and loss function simplifications to serve as a reference for deploying medical VLMs under limited hardware conditions.
 - CheXpert Plus Pre-processing Methodology Decision:
   - look at `docs\chexpert-plus-preprocessing-workflow.md`
 
